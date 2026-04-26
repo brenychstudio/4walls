@@ -1,0 +1,437 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { DOOR_ACT04_MEDIA } from "../act04Media";
+import type { Act04RouteData } from "../actProgression";
+
+type Step = "terminal" | "bread" | "eat" | "corridor" | "choices";
+
+type Props = {
+  route: Act04RouteData;
+  onChoose: (id: string) => void;
+  onBack: () => void;
+};
+
+type TerminalLine =
+  | {
+      type: "normal";
+      text: string;
+    }
+  | {
+      type: "mistyped";
+      wrong: string;
+      final: string;
+    };
+
+const TERMINAL_LINES: TerminalLine[] = [
+  { type: "normal", text: "ПОРІГ НЕ ЗНИКАЄ ОДРАЗУ." },
+  {
+    type: "mistyped",
+    wrong: "КАДР ТРИМАЄТЬСЯ НА ЕКРАНІ, НІБИ ПОРІГ НЕ ХОЧЕ ВІДПУСИТИ ПОГЛЯД.",
+    final: "КАДР ТРИМАЄТЬСЯ НА ЕКРАНІ, НІБИ ПОРІГ НЕ ХОЧЕ ВІДПУСТИТИ ПОГЛЯД.",
+  },
+  { type: "normal", text: "ТЕКСТ ДРУКУЄТЬСЯ В ІНШОМУ РИТМІ." },
+  { type: "normal", text: "ІНОДІ ПОМИЛЯЄТЬСЯ. СТИРАЄ СЕБЕ. ПЕРЕДРУКОВУЄ СЛОВО ВДРУГЕ." },
+  { type: "normal", text: "ДАЛЕКІ СИРЕНИ ВРОСТАЮТЬ У ПРОСТІР." },
+  { type: "normal", text: "ДЗВІНОК БІЛЬШЕ НЕ НАЛЕЖИТЬ ТЕЛЕФОНУ." },
+];
+
+export default function DoorAct04Scene({ route, onChoose, onBack }: Props) {
+  const [step, setStep] = useState<Step>("terminal");
+  const [terminalDisplay, setTerminalDisplay] = useState("");
+  const [terminalReady, setTerminalReady] = useState(false);
+
+  const breadRef = useRef<HTMLVideoElement | null>(null);
+  const eatRef = useRef<HTMLVideoElement | null>(null);
+  const corridorRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    setStep("terminal");
+    setTerminalDisplay("");
+    setTerminalReady(false);
+  }, []);
+
+  useEffect(() => {
+    if (step !== "terminal") return;
+
+    let cancelled = false;
+
+    const wait = (ms: number) =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, ms);
+      });
+
+    const typeIntoDisplay = async (base: string, target: string, speed = 26) => {
+      for (let i = 1; i <= target.length; i += 1) {
+        if (cancelled) return;
+        setTerminalDisplay(base + target.slice(0, i));
+        await wait(speed);
+      }
+    };
+
+    const eraseToLength = async (base: string, current: string, keep: number, speed = 18) => {
+      for (let i = current.length; i >= keep; i -= 1) {
+        if (cancelled) return;
+        setTerminalDisplay(base + current.slice(0, i));
+        await wait(speed);
+      }
+    };
+
+    const commonPrefixLength = (a: string, b: string) => {
+      let i = 0;
+      while (i < a.length && i < b.length && a[i] === b[i]) i += 1;
+      return i;
+    };
+
+    const runTerminal = async () => {
+      let built = "";
+
+      for (const line of TERMINAL_LINES) {
+        if (cancelled) return;
+
+        if (line.type === "normal") {
+          await typeIntoDisplay(built, line.text, 24);
+          if (cancelled) return;
+          built = `${built}${line.text}\n\n`;
+          setTerminalDisplay(built);
+          await wait(360);
+          continue;
+        }
+
+        await typeIntoDisplay(built, line.wrong, 24);
+        if (cancelled) return;
+        await wait(380);
+
+        const keep = commonPrefixLength(line.wrong, line.final);
+        await eraseToLength(built, line.wrong, keep, 16);
+        if (cancelled) return;
+        await wait(120);
+
+        await typeIntoDisplay(`${built}${line.final.slice(0, keep)}`, line.final.slice(keep), 23);
+        if (cancelled) return;
+
+        built = `${built}${line.final}\n\n`;
+        setTerminalDisplay(built);
+        await wait(420);
+      }
+
+      if (cancelled) return;
+
+      setTerminalReady(true);
+      await wait(1400);
+
+      if (!cancelled) {
+        setStep("bread");
+      }
+    };
+
+    runTerminal();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step]);
+
+  useEffect(() => {
+    const video =
+      step === "bread"
+        ? breadRef.current
+        : step === "eat"
+        ? eatRef.current
+        : step === "corridor"
+        ? corridorRef.current
+        : null;
+
+    if (!video) return;
+
+    video.currentTime = 0;
+    video.playbackRate = 1;
+    video.volume = step === "corridor" ? 0.84 : 0.9;
+
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        // Browser may still defer autoplay with audio in some cases.
+      });
+    }
+  }, [step]);
+
+  const advanceScene = useCallback(() => {
+    setStep((current) => {
+      if (current === "bread") return "eat";
+      if (current === "eat") return "corridor";
+      if (current === "corridor") return "choices";
+      return current;
+    });
+  }, []);
+
+  return (
+    <section className="relative min-h-screen overflow-hidden bg-[#030504] text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_36%,rgba(126,255,186,0.08),transparent_30%),linear-gradient(180deg,rgba(0,0,0,0.16),rgba(0,0,0,0.82))]" />
+      <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(124,255,190,0.16)_1px,transparent_1px)] [background-size:100%_4px]" />
+
+      <MediaLayer
+        step={step}
+        breadRef={breadRef}
+        eatRef={eatRef}
+        corridorRef={corridorRef}
+        onAdvance={advanceScene}
+      />
+
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1280px] flex-col px-6 py-8 md:px-10 md:py-10">
+        <div className="flex items-start justify-between gap-4">
+          <div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] uppercase tracking-[0.3em] text-white/48 backdrop-blur-md">
+            {route.act04Tag}
+          </div>
+
+          <div className="rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-white/38 backdrop-blur-md">
+            door route / live scene
+          </div>
+        </div>
+
+        {step === "terminal" ? (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="w-full max-w-[900px] rounded-[32px] border border-white/10 bg-[rgba(6,12,9,0.58)] px-6 py-7 shadow-[0_0_80px_rgba(0,0,0,0.18)] backdrop-blur-xl md:px-8 md:py-8">
+              <div className="mb-5 text-[10px] uppercase tracking-[0.32em] text-[rgba(176,255,206,0.42)]">
+                threshold terminal
+              </div>
+
+              <div className="whitespace-pre-wrap font-mono text-[clamp(16px,1.18vw,20px)] leading-[1.95] text-[rgba(226,255,236,0.84)]">
+                {terminalDisplay}
+                <span
+                  className="ml-1 inline-block h-[1.05em] w-[0.08em] translate-y-[0.16em] align-middle"
+                  style={{
+                    background: terminalReady
+                      ? "rgba(212,255,226,0.34)"
+                      : "rgba(212,255,226,0.74)",
+                    boxShadow: terminalReady ? "none" : "0 0 12px rgba(160,255,210,0.18)",
+                    transition: "background 260ms ease, box-shadow 260ms ease",
+                  }}
+                />
+              </div>
+
+              <div className="mt-6 text-[11px] uppercase tracking-[0.28em] text-[rgba(172,255,202,0.32)]">
+                frozen threshold / distant pressure / retyped fragment
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {step === "bread" || step === "eat" || step === "corridor" ? (
+          <div className="pointer-events-none flex flex-1 items-end">
+            <div className="mb-6 max-w-[600px] rounded-[26px] border border-white/10 bg-[rgba(4,8,6,0.46)] px-5 py-5 backdrop-blur-xl transition-all duration-700">
+              <div className="text-[10px] uppercase tracking-[0.32em] text-[rgba(176,255,206,0.42)]">
+                consequence drift
+              </div>
+
+              <div className="mt-4 text-[clamp(20px,2vw,34px)] leading-[1.14] text-[rgba(242,255,246,0.94)]">
+                {step === "bread"
+                  ? "тиша між рухами стає густішою"
+                  : step === "eat"
+                  ? "побут не повертає контроль"
+                  : "дзвінок більше не належить телефону"}
+              </div>
+
+              <div className="mt-4 text-[14px] leading-[1.8] text-[rgba(214,255,228,0.64)]">
+                {step === "bread"
+                  ? "Поріг не відпускає погляд навіть тоді, коли руки займаються хлібом."
+                  : step === "eat"
+                  ? "Кухня ще існує, але вже як місце тиску, а не спокою."
+                  : "Коридор дивиться назад. І телефон звучить так, ніби він по той бік дверей."}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {step === "choices" ? (
+          <div className="flex flex-1 items-center justify-end">
+            <div className="w-full max-w-[540px] rounded-[28px] border border-white/10 bg-[rgba(6,12,9,0.5)] p-6 shadow-[0_0_80px_rgba(0,0,0,0.2)] backdrop-blur-xl md:p-8">
+              <div className="text-[10px] uppercase tracking-[0.32em] text-[rgba(176,255,206,0.42)]">
+                infected choice
+              </div>
+
+              <div className="mt-4 text-[clamp(22px,2vw,34px)] leading-[1.28] text-[rgba(242,255,246,0.94)]">
+                {route.act05Prompt}
+              </div>
+
+              <div className="mt-8 grid gap-4">
+                {route.act05Options.map((option, index) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => onChoose(option.id)}
+                    className="group rounded-[24px] border border-white/10 bg-[rgba(8,18,12,0.44)] px-5 py-5 text-left transition-all duration-300 hover:border-[rgba(176,255,214,0.24)] hover:bg-[rgba(10,24,16,0.72)]"
+                  >
+                    <div className="text-[10px] uppercase tracking-[0.28em] text-[rgba(166,255,200,0.44)]">
+                      choice 0{index + 1}
+                    </div>
+
+                    <div className="mt-3 text-[clamp(18px,1.45vw,24px)] leading-[1.35] text-[rgba(236,255,244,0.92)]">
+                      {option.label}
+                    </div>
+
+                    <div className="mt-3 text-[13px] leading-[1.7] text-[rgba(204,255,220,0.58)]">
+                      {option.summary}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full border border-white/12 bg-black/28 px-5 py-3 text-sm text-white/82 backdrop-blur-md transition hover:border-white/24 hover:bg-black/42"
+                  onClick={onBack}
+                  type="button"
+                >
+                  Назад до відео
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function MediaLayer({
+  step,
+  breadRef,
+  eatRef,
+  corridorRef,
+  onAdvance,
+}: {
+  step: Step;
+  breadRef: React.RefObject<HTMLVideoElement | null>;
+  eatRef: React.RefObject<HTMLVideoElement | null>;
+  corridorRef: React.RefObject<HTMLVideoElement | null>;
+  onAdvance: () => void;
+}) {
+  return (
+    <div className="absolute inset-0">
+      <video
+        className="absolute inset-0 h-full w-full object-cover"
+        src={DOOR_ACT04_MEDIA.thresholdLoop}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        style={{
+          opacity: step === "terminal" ? 0.24 : 0,
+          filter: "blur(8px) brightness(0.26) saturate(0.62)",
+          transition: "opacity 1200ms ease",
+        }}
+      />
+
+      <video
+        ref={breadRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        src={DOOR_ACT04_MEDIA.kitchenBread}
+        playsInline
+        preload="auto"
+        onEnded={() => {
+          if (step === "bread") onAdvance();
+        }}
+        style={{
+          opacity: step === "bread" ? 1 : 0,
+          transition: "opacity 1400ms ease",
+          filter: "brightness(0.72) saturate(0.76)",
+        }}
+      />
+
+      <video
+        ref={eatRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        src={DOOR_ACT04_MEDIA.kitchenEat}
+        playsInline
+        preload="auto"
+        onEnded={() => {
+          if (step === "eat") onAdvance();
+        }}
+        style={{
+          opacity: step === "eat" ? 1 : 0,
+          transition: "opacity 1400ms ease",
+          filter: "brightness(0.72) saturate(0.74)",
+        }}
+      />
+
+      <video
+        ref={corridorRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        src={DOOR_ACT04_MEDIA.corridorPhone}
+        playsInline
+        preload="auto"
+        onEnded={() => {
+          if (step === "corridor") onAdvance();
+        }}
+        style={{
+          opacity: step === "corridor" || step === "choices" ? 1 : 0,
+          transition: "opacity 1500ms ease",
+          filter: "brightness(0.62) saturate(0.68)",
+        }}
+      />
+
+      {step === "corridor" || step === "choices" ? <InfectedPhonePresence /> : null}
+
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.24),rgba(0,0,0,0.14)_30%,rgba(0,0,0,0.74))]" />
+    </div>
+  );
+}
+
+function InfectedPhonePresence() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        className="absolute"
+        style={{
+          right: "12%",
+          bottom: "18%",
+          width: "180px",
+          height: "180px",
+          borderRadius: "9999px",
+          border: "1px solid rgba(220,255,232,0.12)",
+          boxShadow: "0 0 24px rgba(180,255,210,0.08)",
+          animation: "doorRingPulse 2.8s ease-out infinite",
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          right: "10.8%",
+          bottom: "16.8%",
+          width: "220px",
+          height: "220px",
+          borderRadius: "9999px",
+          border: "1px solid rgba(220,255,232,0.07)",
+          animation: "doorRingPulse 2.8s ease-out 0.7s infinite",
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          right: "14.5%",
+          bottom: "21.5%",
+          width: "14px",
+          height: "14px",
+          borderRadius: "9999px",
+          background: "rgba(220,255,232,0.22)",
+          boxShadow: "0 0 18px rgba(220,255,232,0.16)",
+          animation: "doorRingCore 2.2s ease-in-out infinite",
+        }}
+      />
+
+      <style>{`
+        @keyframes doorRingPulse {
+          0% { opacity: 0; transform: scale(0.7); }
+          18% { opacity: 0.18; }
+          100% { opacity: 0; transform: scale(1.22); }
+        }
+
+        @keyframes doorRingCore {
+          0%, 100% { opacity: 0.16; transform: scale(1); }
+          50% { opacity: 0.34; transform: scale(1.12); }
+        }
+      `}</style>
+    </div>
+  );
+}

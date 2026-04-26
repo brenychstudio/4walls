@@ -1,0 +1,576 @@
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+
+import type { TerminalChapterSceneContract } from "../../app/storyContracts";
+import { STORY_PAUSE_TOKEN } from "../../app/storyMedia";
+import type { ChoiceId } from "../../app/storyTypes";
+
+type StoryPhase =
+  | "dark"
+  | "titleTyping"
+  | "titleFlicker"
+  | "titleErase"
+  | "ellipsis"
+  | "bodyPause"
+  | "bodyTyping"
+  | "endingDots"
+  | "glitchover"
+  | "choiceTyping"
+  | "choiceIdle"
+  | "branchReveal";
+
+type Props = {
+  scene: TerminalChapterSceneContract;
+  textSpeed?: "normal" | "fast" | "ultra";
+  initialView?: "story" | "choice";
+  onBranchSelect?: (choice: ChoiceId) => void;
+};
+
+const TITLE_BASE = "Глава [X]: Тиша в кадрах";
+
+const DARK_DELAY = 1700;
+const TITLE_TYPE_MS = 96;
+const TITLE_FLICKER_MS = 1400;
+const TITLE_ERASE_MS = 1320;
+const ELLIPSIS_STEP_MS = 560;
+const BODY_TYPE_MS = 34;
+const BODY_PAUSE_HOLD_MS = 980;
+const ENDING_DOTS_DURATION = 2600;
+const GLITCH_DURATION = 2100;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function smoothstep(edge0: number, edge1: number, x: number) {
+  if (edge0 === edge1) return x < edge0 ? 0 : 1;
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function replaceChapterToken(base: string, chapterIndex: string) {
+  return base.replace("[X]", chapterIndex);
+}
+
+function scrambleGlyph(char: string) {
+  if (char === " " || char === "\n") return char;
+  const pool = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯ0123456789#%*?";
+  return pool[Math.floor(Math.random() * pool.length)] ?? char;
+}
+
+function eraseWithRoll(text: string, progress: number) {
+  const total = text.length;
+  const keep = Math.max(0, Math.floor(total * (1 - progress)));
+  const visible = text.slice(0, keep);
+  const tail = text.slice(keep, Math.min(total, keep + 5));
+  const scrambledTail = tail
+    .split("")
+    .map((char) => (char === " " ? " " : scrambleGlyph(char)))
+    .join("");
+  return visible + scrambledTail;
+}
+
+function createEmptyChoiceState(): Record<ChoiceId, string> {
+  return {
+    door: "",
+    phone: "",
+    wash: "",
+  };
+}
+
+export default function ChapterIntroTypewriterPreview({
+  scene,
+  textSpeed = "normal",
+  initialView = "story",
+  onBranchSelect,
+}: Props) {
+  const title = useMemo(() => replaceChapterToken(TITLE_BASE, scene.chapterIndex), [scene.chapterIndex]);
+  const speedFactor =
+    textSpeed === "ultra" ? 0.12 : textSpeed === "fast" ? 0.34 : 1;
+  const speedMs = (value: number) => Math.max(18, Math.round(value * speedFactor));
+
+  const [phase, setPhase] = useState<StoryPhase>("dark");
+  const [titleVisible, setTitleVisible] = useState("");
+  const [ellipsisCount, setEllipsisCount] = useState(0);
+  const [bodyVisible, setBodyVisible] = useState("");
+  const [flickerOn, setFlickerOn] = useState(true);
+  const [isLagging, setIsLagging] = useState(false);
+  const [bodyFlickerOn, setBodyFlickerOn] = useState(true);
+  const [glitchLevel, setGlitchLevel] = useState(0);
+  const [choiceVisible, setChoiceVisible] = useState<Record<ChoiceId, string>>(createEmptyChoiceState());
+  const [, setSelectedChoice] = useState<ChoiceId | null>(null);
+
+  const cursorRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    setPhase("dark");
+    setTitleVisible("");
+    setEllipsisCount(0);
+    setBodyVisible("");
+    setFlickerOn(true);
+    setIsLagging(false);
+    setBodyFlickerOn(true);
+    setGlitchLevel(0);
+    setChoiceVisible(createEmptyChoiceState());
+    setSelectedChoice(null);
+    window.scrollTo({ top: 0, behavior: "auto" });
+
+    const timers: number[] = [];
+    let titleIndex = 0;
+    let bodyIndex = 0;
+    const bodyText = scene.bodyText;
+    const choices = scene.choices;
+
+    const clearTimers = () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+
+    const schedule = (fn: () => void, delay: number) => {
+      const id = window.setTimeout(fn, delay);
+      timers.push(id);
+      return id;
+    };
+
+    const startChoiceTyping = () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setPhase("choiceTyping");
+      setChoiceVisible(createEmptyChoiceState());
+
+      choices.forEach((choice, index) => {
+        schedule(() => {
+          setChoiceVisible((prev) => ({
+            ...prev,
+            [choice.id]: choice.label,
+          }));
+        }, speedMs(220 + index * 180));
+      });
+
+      schedule(() => {
+        setPhase("choiceIdle");
+      }, speedMs(220 + choices.length * 180 + 180));
+    };
+
+    const startGlitch = () => {
+      setPhase("glitchover");
+      setEllipsisCount(0);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      const glitchStart = performance.now();
+      const glitchDuration = speedMs(GLITCH_DURATION);
+
+      const glitchStep = () => {
+        const elapsed = performance.now() - glitchStart;
+        const progress = clamp(elapsed / glitchDuration, 0, 1);
+        const pulse = Math.sin(progress * Math.PI * 10) * 0.12 + 0.18;
+        setGlitchLevel(clamp(progress + pulse, 0, 1));
+        if (progress >= 1) {
+          setGlitchLevel(1);
+          startChoiceTyping();
+          return;
+        }
+        schedule(glitchStep, 42);
+      };
+
+      glitchStep();
+    };
+
+    const startEndingDots = () => {
+      setPhase("endingDots");
+      setEllipsisCount(0);
+      setBodyFlickerOn(true);
+      let dots = 0;
+      const startedAt = performance.now();
+
+      const dotsStep = () => {
+        const elapsed = performance.now() - startedAt;
+        if (elapsed >= ENDING_DOTS_DURATION) {
+          setEllipsisCount(3);
+          startGlitch();
+          return;
+        }
+
+        dots = dots === 3 ? 1 : dots + 1;
+        setEllipsisCount(dots);
+        setBodyFlickerOn((prev) => !prev);
+        schedule(dotsStep, speedMs(ELLIPSIS_STEP_MS * 0.88));
+      };
+
+      dotsStep();
+    };
+
+    const finishBody = () => {
+      setIsLagging(false);
+      setBodyFlickerOn(true);
+      setBodyVisible(bodyText.replaceAll(STORY_PAUSE_TOKEN, ""));
+      schedule(startEndingDots, speedMs(860));
+    };
+
+    const startBodyPause = (resume: () => void) => {
+      setPhase("bodyPause");
+      setEllipsisCount(0);
+      setIsLagging(false);
+      setBodyFlickerOn(true);
+
+      let dots = 0;
+      let flickerTicks = 0;
+
+      const flickerStep = () => {
+        flickerTicks += 1;
+        setBodyFlickerOn((prev) => !prev);
+        if (flickerTicks >= 12) {
+          setBodyFlickerOn(true);
+          return;
+        }
+        schedule(flickerStep, speedMs(140));
+      };
+
+      const dotsStep = () => {
+        dots = Math.min(3, dots + 1);
+        setEllipsisCount(dots);
+        if (dots >= 3) {
+          schedule(() => {
+            setEllipsisCount(0);
+            setBodyFlickerOn(true);
+            setPhase("bodyTyping");
+            resume();
+          }, speedMs(BODY_PAUSE_HOLD_MS));
+          return;
+        }
+        schedule(dotsStep, speedMs(ELLIPSIS_STEP_MS));
+      };
+
+      flickerStep();
+      schedule(dotsStep, speedMs(ELLIPSIS_STEP_MS * 0.6));
+    };
+
+    const typeBody = () => {
+      if (bodyIndex >= bodyText.length) {
+        finishBody();
+        return;
+      }
+
+      if (bodyText.startsWith(STORY_PAUSE_TOKEN, bodyIndex)) {
+        bodyIndex += STORY_PAUSE_TOKEN.length;
+        startBodyPause(() => schedule(typeBody, speedMs(200)));
+        return;
+      }
+
+      bodyIndex += 1;
+      const visibleRaw = bodyText.slice(0, bodyIndex).replaceAll(STORY_PAUSE_TOKEN, "");
+      setBodyVisible(visibleRaw);
+
+      if (bodyIndex >= bodyText.length) {
+        finishBody();
+        return;
+      }
+
+      const char = bodyText[bodyIndex - 1] ?? "";
+      let delay = speedMs(BODY_TYPE_MS + Math.random() * 24);
+
+      if (char === "." || char === "!" || char === "?") {
+        delay += speedMs(420 + Math.random() * 260);
+      } else if (char === "," || char === "—" || char === ";" || char === ":") {
+        delay += speedMs(180 + Math.random() * 140);
+      } else if (char === "\n") {
+        delay += speedMs(360 + Math.random() * 260);
+      }
+
+      const lagTrigger = bodyIndex > 36 && Math.random() < 0.075;
+      if (lagTrigger) {
+        setIsLagging(true);
+        delay += speedMs(560 + Math.random() * 980);
+      } else {
+        setIsLagging(false);
+      }
+
+      schedule(typeBody, delay);
+    };
+
+    const startBody = () => {
+      setPhase("bodyTyping");
+      setIsLagging(false);
+      typeBody();
+    };
+
+    const startEllipsis = () => {
+      setPhase("ellipsis");
+      let dots = 0;
+
+      const stepDots = () => {
+        dots = Math.min(3, dots + 1);
+        setEllipsisCount(dots);
+        if (dots >= 3) {
+          schedule(startBody, speedMs(980));
+          return;
+        }
+        schedule(stepDots, speedMs(ELLIPSIS_STEP_MS));
+      };
+
+      stepDots();
+    };
+
+    const startErase = () => {
+      setPhase("titleErase");
+      const eraseStart = performance.now();
+      const eraseDuration = speedMs(TITLE_ERASE_MS);
+
+      const eraseStep = () => {
+        const elapsed = performance.now() - eraseStart;
+        const progress = clamp(elapsed / eraseDuration, 0, 1);
+        setTitleVisible(eraseWithRoll(title, progress));
+        if (progress >= 1) {
+          setTitleVisible("");
+          startEllipsis();
+          return;
+        }
+        schedule(eraseStep, speedMs(54));
+      };
+
+      eraseStep();
+    };
+
+    const startFlicker = () => {
+      setPhase("titleFlicker");
+      let flickerTicks = 0;
+
+      const flickerStep = () => {
+        flickerTicks += 1;
+        setFlickerOn((prev) => !prev);
+        if (flickerTicks >= 12) {
+          setFlickerOn(true);
+          startErase();
+          return;
+        }
+        schedule(flickerStep, speedMs(TITLE_FLICKER_MS / 12));
+      };
+
+      flickerStep();
+    };
+
+    const startTitleTyping = () => {
+      setPhase("titleTyping");
+
+      const typeTitle = () => {
+        titleIndex += 1;
+        setTitleVisible(title.slice(0, titleIndex));
+        if (titleIndex >= title.length) {
+          startFlicker();
+          return;
+        }
+        schedule(typeTitle, speedMs(TITLE_TYPE_MS + Math.random() * 18));
+      };
+
+      typeTitle();
+    };
+
+    if (initialView === "choice") {
+      startChoiceTyping();
+
+      return () => {
+        clearTimers();
+      };
+    }
+
+    schedule(startTitleTyping, speedMs(DARK_DELAY));
+
+    return () => {
+      clearTimers();
+    };
+  }, [initialView, scene.bodyText, scene.choices, scene.chapterIndex, textSpeed, title]);
+
+  useEffect(() => {
+    if (phase !== "bodyTyping") return;
+    const node = cursorRef.current;
+    if (!node) return;
+
+    const id = window.requestAnimationFrame(() => {
+      const rect = node.getBoundingClientRect();
+      const threshold = window.innerHeight * 0.78;
+      if (rect.bottom > threshold) {
+        const delta = rect.bottom - window.innerHeight * 0.68;
+        window.scrollBy({ top: delta, behavior: "smooth" });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(id);
+  }, [bodyVisible, phase]);
+
+  const storyView = phase !== "choiceTyping" && phase !== "choiceIdle" && phase !== "branchReveal";
+  const glitchTransform =
+    phase === "glitchover"
+      ? `translate(${(Math.random() - 0.5) * glitchLevel * 14}px, ${(Math.random() - 0.5) * glitchLevel * 10}px) scale(${1 + glitchLevel * 0.04}) skewX(${(Math.random() - 0.5) * glitchLevel * 4}deg)`
+      : "none";
+
+  return (
+    <div className="relative min-h-screen overflow-x-hidden bg-[#050706] text-[rgba(220,255,230,0.9)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(82,255,160,0.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.015),rgba(255,255,255,0)_18%,rgba(0,0,0,0.46)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-30 mix-blend-screen [background-image:linear-gradient(rgba(78,255,150,0.06)_1px,transparent_1px)] [background-size:100%_4px]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:radial-gradient(circle_at_center,rgba(255,255,255,0.8)_0.6px,transparent_0.7px)] [background-size:6px_6px]" />
+
+      {phase === "glitchover" ? (
+        <>
+          <div
+            className="pointer-events-none absolute inset-0 z-20 mix-blend-screen"
+            style={{
+              opacity: 0.16 + glitchLevel * 0.34,
+              background:
+                "repeating-linear-gradient(180deg, rgba(230,255,238,0.12) 0px, rgba(230,255,238,0.12) 1px, transparent 2px, transparent 6px)",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 z-20"
+            style={{
+              opacity: glitchLevel * 0.22,
+              background:
+                "linear-gradient(90deg, rgba(255,0,96,0.1), transparent 30%, transparent 70%, rgba(0,255,170,0.1)), repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 2px, transparent 4px)",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 z-20 bg-white"
+            style={{ opacity: smoothstep(0.72, 1, glitchLevel) * 0.08 }}
+          />
+        </>
+      ) : null}
+
+      <div
+        className="relative z-10 mx-auto flex min-h-screen max-w-[1180px] flex-col px-8 pb-20 pt-10 lg:px-12 lg:pt-14"
+        style={{
+          transform: glitchTransform,
+          opacity: phase === "glitchover" ? 1 - glitchLevel * 0.12 : 1,
+          filter: phase === "glitchover" ? `blur(${glitchLevel * 1.4}px)` : "none",
+        }}
+      >
+        <div className="mb-8 flex items-start justify-between gap-6">
+          <div className="rounded-full border border-[rgba(124,255,190,0.14)] bg-[rgba(6,16,10,0.44)] px-4 py-2 text-[11px] uppercase tracking-[0.34em] text-[rgba(188,255,216,0.62)] backdrop-blur-md">
+            {scene.eyebrow}
+          </div>
+
+          <div className="text-right text-[11px] uppercase tracking-[0.3em] text-[rgba(176,255,204,0.34)]">
+            STATE: {phase}
+          </div>
+        </div>
+
+        {storyView ? (
+          <div className="flex flex-1 flex-col items-center pt-[10vh] text-center lg:pt-[12vh]">
+            <div className="min-h-[110px] lg:min-h-[140px]">
+              {titleVisible ? (
+                <h1
+                  className="font-mono text-[clamp(28px,4vw,58px)] leading-[1.08] tracking-[0.04em] text-[rgba(230,255,236,0.92)]"
+                  style={{
+                    opacity: flickerOn ? 1 : 0.34,
+                    textShadow: flickerOn
+                      ? "0 0 12px rgba(144,255,196,0.18), 0 0 34px rgba(88,255,160,0.08)"
+                      : "0 0 8px rgba(144,255,196,0.08)",
+                  }}
+                >
+                  {titleVisible}
+                </h1>
+              ) : null}
+            </div>
+
+            <div className="mt-2 min-h-[36px] font-mono text-[26px] tracking-[0.38em] text-[rgba(214,255,224,0.82)]">
+              {phase === "ellipsis" || phase === "bodyPause" || phase === "endingDots"
+                ? ".".repeat(ellipsisCount)
+                : ""}
+            </div>
+
+            <div
+              className="mt-8 w-full max-w-[820px] rounded-[28px] border border-[rgba(118,255,188,0.1)] bg-[rgba(6,14,10,0.24)] px-6 py-7 text-left shadow-[0_0_80px_rgba(40,255,134,0.04)] backdrop-blur-sm transition-opacity duration-200 lg:px-8 lg:py-8"
+              style={{
+                opacity: phase === "bodyPause" || phase === "endingDots" ? (bodyFlickerOn ? 0.96 : 0.68) : 1,
+                filter:
+                  phase === "bodyPause" || phase === "endingDots"
+                    ? bodyFlickerOn
+                      ? "brightness(1)"
+                      : "brightness(0.86)"
+                    : "none",
+              }}
+            >
+              <div className="mb-5 font-mono text-[11px] uppercase tracking-[0.34em] text-[rgba(172,255,202,0.42)]">
+                Глава / Вхідний фрагмент
+              </div>
+
+              <div
+                className="whitespace-pre-wrap font-mono text-[clamp(15px,1.35vw,20px)] leading-[1.9] text-[rgba(228,255,236,0.84)]"
+                style={{ textShadow: "0 0 14px rgba(92,255,168,0.05)" }}
+              >
+                {bodyVisible}
+                {phase === "bodyTyping" ? (
+                  <span
+                    ref={cursorRef}
+                    className="ml-1 inline-block h-[1.1em] w-[0.58ch] translate-y-[2px] align-middle shadow-[0_0_12px_rgba(160,255,210,0.2)]"
+                    style={{
+                      background: isLagging ? "rgba(212,255,226,0.46)" : "rgba(212,255,226,0.92)",
+                      opacity: isLagging ? 0.42 : 1,
+                      transition: "opacity 180ms ease, background 180ms ease",
+                    }}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {phase === "choiceTyping" || phase === "choiceIdle" ? (
+          <div className="flex flex-1 flex-col items-center justify-center text-center">
+            <div className="mb-6 rounded-full border border-[rgba(124,255,190,0.14)] bg-[rgba(6,16,10,0.44)] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.34em] text-[rgba(188,255,216,0.62)] backdrop-blur-md">
+              {scene.choiceBadge}
+            </div>
+
+            <div className="mb-10 max-w-[760px] font-mono text-[13px] uppercase tracking-[0.28em] text-[rgba(182,255,208,0.34)]">
+              {scene.choiceLead}
+            </div>
+
+            <div className="grid w-full max-w-[1040px] grid-cols-1 gap-4 md:grid-cols-3">
+              {scene.choices.map((choice, index) => {
+                const enabled = phase === "choiceIdle";
+                const displayLabel = choiceVisible[choice.id];
+                const revealed = displayLabel.trim().length > 0;
+
+                return (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    disabled={!enabled}
+                    onClick={() => {
+                      setSelectedChoice(choice.id);
+                      setPhase("branchReveal");
+                      onBranchSelect?.(choice.id);
+                    }}
+                    className={`group relative overflow-hidden rounded-[26px] border px-5 py-5 text-left font-mono transition-all duration-300 ${
+                      enabled
+                        ? "border-[rgba(124,255,190,0.16)] bg-[rgba(8,18,12,0.44)] hover:border-[rgba(176,255,214,0.28)] hover:bg-[rgba(10,24,16,0.72)]"
+                        : "border-[rgba(124,255,190,0.08)] bg-[rgba(8,18,12,0.24)]"
+                    }`}
+                    style={{
+                      opacity: revealed ? 1 : 0.24,
+                      transform: revealed ? "translateY(0px)" : "translateY(10px) scale(0.985)",
+                      transition:
+                        `opacity 420ms ease ${index * 70}ms, transform 420ms ease ${index * 70}ms, border-color 240ms ease, background-color 240ms ease`,
+                    }}
+                  >
+                    <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_10%,rgba(112,255,176,0.12),transparent_46%)]" />
+                    </div>
+
+                    <div className="relative z-10">
+                      <div className="text-[10px] uppercase tracking-[0.28em] text-[rgba(166,255,200,0.44)]">
+                        {choice.routeLabel}
+                      </div>
+
+                      <div className="mt-3 min-h-[3.2rem] text-[clamp(18px,1.45vw,24px)] leading-[1.35] text-[rgba(236,255,244,0.92)]">
+                        {displayLabel || "\u00A0"}
+                      </div>
+
+                      <div className="mt-3 min-h-[4.2rem] text-[13px] leading-[1.7] text-[rgba(204,255,220,0.58)]">
+                        {revealed ? choice.summary : "\u00A0"}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
