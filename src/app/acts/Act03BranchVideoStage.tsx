@@ -1,8 +1,31 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { messages, type Locale } from "../../i18n/messages";
 import { ACT03_BRANCH_MEDIA } from "../projectMedia";
 import type { ChoiceId } from "../storyTypes";
+
+const ACT03_VIDEO_POSTER =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+      <defs>
+        <radialGradient id="g" cx="50%" cy="40%" r="70%">
+          <stop offset="0%" stop-color="#133528" />
+          <stop offset="55%" stop-color="#050807" />
+          <stop offset="100%" stop-color="#000000" />
+        </radialGradient>
+        <linearGradient id="s" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(255,255,255,0.08)" />
+          <stop offset="100%" stop-color="rgba(255,255,255,0)" />
+        </linearGradient>
+      </defs>
+      <rect width="1280" height="720" fill="url(#g)" />
+      <rect width="1280" height="720" fill="url(#s)" />
+      <circle cx="640" cy="360" r="210" fill="rgba(120,255,190,0.08)" />
+      <text x="72" y="88" fill="rgba(255,255,255,0.34)" font-family="ui-sans-serif, system-ui, sans-serif" font-size="22" letter-spacing="5">4WALLS / ACT 03</text>
+      <text x="72" y="140" fill="rgba(140,231,198,0.84)" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" letter-spacing="4">LOADING VIDEO ROUTE</text>
+    </svg>
+  `);
 
 type Props = {
   choice: ChoiceId | null;
@@ -22,12 +45,52 @@ export default function Act03BranchVideoStage({
   onEnterXR,
 }: Props) {
   const [videoError, setVideoError] = useState(false);
+  const [isVideoReady, setIsVideoReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const copy = messages[locale];
 
   const asset = useMemo(() => {
     if (!choice) return null;
     return ACT03_BRANCH_MEDIA[choice];
   }, [choice]);
+
+  useEffect(() => {
+    setVideoError(false);
+    setIsVideoReady(false);
+
+    const video = videoRef.current;
+    if (!video || !asset) return;
+
+    const tryPlay = () => {
+      video.play().catch(() => {});
+    };
+
+    video.load();
+
+    if (video.readyState >= 2) {
+      setIsVideoReady(true);
+      tryPlay();
+      return;
+    }
+
+    const handleLoadedData = () => {
+      setIsVideoReady(true);
+      tryPlay();
+    };
+
+    const handleCanPlay = () => {
+      setIsVideoReady(true);
+      tryPlay();
+    };
+
+    video.addEventListener("loadeddata", handleLoadedData);
+    video.addEventListener("canplay", handleCanPlay);
+
+    return () => {
+      video.removeEventListener("loadeddata", handleLoadedData);
+      video.removeEventListener("canplay", handleCanPlay);
+    };
+  }, [asset?.src]);
 
   if (!asset) {
     return (
@@ -70,13 +133,18 @@ export default function Act03BranchVideoStage({
 
       {!videoError ? (
         <video
+          ref={videoRef}
           key={asset.src}
           className="absolute inset-0 h-full w-full object-cover"
           src={asset.src}
+          poster={ACT03_VIDEO_POSTER}
           autoPlay
           loop
           playsInline
           preload="auto"
+          onLoadedData={() => setIsVideoReady(true)}
+          onCanPlay={() => setIsVideoReady(true)}
+          onPlaying={() => setIsVideoReady(true)}
           onError={() => setVideoError(true)}
         />
       ) : (
@@ -86,6 +154,27 @@ export default function Act03BranchVideoStage({
           </div>
         </div>
       )}
+
+      {!videoError && !isVideoReady ? (
+        <div className="absolute inset-0 z-[1] bg-black">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_32%,rgba(120,255,190,0.08),transparent_42%)]" />
+          <div className="absolute inset-x-0 bottom-10 px-6 md:px-10">
+            <div className="max-w-[760px]">
+              <div className="text-[11px] uppercase tracking-[0.34em] text-white/32">
+                {copy.ui.activeRoute}
+              </div>
+
+              <h2 className="mt-3 text-[clamp(28px,4vw,56px)] leading-[1.04] text-white/78">
+                {asset.title}
+              </h2>
+
+              <p className="mt-4 max-w-[620px] text-[15px] leading-[1.8] text-white/42">
+                {asset.summary}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.46),rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.62))]" />
 
