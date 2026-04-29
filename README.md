@@ -1,73 +1,144 @@
-# React + TypeScript + Vite
+# 4WALLS
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Interactive cinematic web narrative with branching routes, video-based progression, and an optional XR threshold layer.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+4WALLS is an authored browser-based story project built as a dark, atmospheric terminal-cinematic experience.
 
-## React Compiler
+The project combines:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- branching narrative structure
+- fullscreen video route playback
+- consequence scenes for each branch
+- an optional XR threshold scene for the door route
+- a restrained interface language inspired by terminal systems, signal logic, and immersive storytelling
 
-## Expanding the ESLint configuration
+The current implementation is focused on preserving the core story flow first, while gradually layering in bilingual UI, XR continuity, and visual polish.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Current status
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Project state: active development
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Currently working:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Act 03 branch playback flow
+- Act 04 continuation structure
+- door branch continuation scene
+- optional XR route for the door branch
+- bilingual UI foundation (`uk` / `en`)
+- deployed browser version
+
+Still evolving:
+
+- full bilingual story text
+- media optimization for first-load playback
+- OG / social meta polish
+- further XR refinement
+- final premium finish across all branches
+
+## Core experience structure
+
+Current project logic:
+
+- user enters the project through a terminal-like preloader
+- story progresses into branch selection
+- each branch plays as a fullscreen video fragment
+- after playback, progression continues into the related next scene
+- for the **door** route, XR is available as an **optional threshold layer**, not a forced continuation
+
+## Main routes / modes
+
+### Web narrative
+
+The main browser experience contains the primary story flow and branch structure.
+
+### XR threshold
+
+The door route can optionally open an XR threshold scene:
+
+`/xr/door`
+
+This XR scene is treated as a supplementary authored spatial layer, not a replacement for the main 2D story flow.
+
+## Tech stack
+
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- browser video playback via `public/`
+- custom XR layer integrated into the same project
+- local i18n foundation (`uk` / `en`)
+
+## Project goals
+
+This repository serves several purposes at once:
+
+- build a strong interactive narrative project
+- explore the overlap between cinematic web storytelling and immersive spatial interaction
+- stress-test reusable XR ideas that can later be extracted into a more universal engine baseline
+- preserve a premium authored feel rather than turning the project into a generic app-like interface
+
+## Repository structure
+
+```text
+src/
+  app/
+    acts/
+    transitions/
+    ...
+  components/
+  i18n/
+  pages/
+  xr/
+  xr-core/
+  xr-experiences/
+
+public/
+  fourwalls/
+    act03/
+    act04/
+    audio/
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Local development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Install dependencies:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+Run dev server:
+
+```bash
+npm run dev
+```
+
+Build for production:
+
+```bash
+npm run build
+```
+
+## Notes
+
+- Media-heavy scenes may behave differently on first cold load in production than in local playback.
+- The XR path is intentionally optional and currently attached only to the door branch.
+- The project is still under active iteration, so some text, media, and polish passes are not final yet.
+
+## Positioning
+
+4WALLS is best understood as:
+
+- interactive narrative prototype
+- immersive concept site
+- cinematic story experiment
+- XR-augmented web experience
+
+rather than a conventional website or utility product.
+
+## License
+
+Private / internal development repository unless explicitly released otherwise.
