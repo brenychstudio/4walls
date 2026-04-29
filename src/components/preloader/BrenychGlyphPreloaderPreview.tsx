@@ -427,11 +427,6 @@ export default function BrenychGlyphPreloaderPreview({ onEnterComplete }: Props)
       }
 
       ctx.shadowBlur = 0;
-      ctx.fillStyle = `rgba(210, 255, 228, ${0.38 * (1 - collapseProgress)})`;
-      ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.textAlign = "left";
-      ctx.fillText("Brenych Studio / Glyph Rain Loader", 28, 34);
-
       if (enterStartRef.current !== null && collapseProgress >= 0.999 && !didComplete) {
         didComplete = true;
         setEnterState("complete");
@@ -452,8 +447,6 @@ export default function BrenychGlyphPreloaderPreview({ onEnterComplete }: Props)
     };
   }, [text, onEnterComplete]);
 
-  const phaseLabel = enterState === "collapsing" ? "enter" : phase;
-
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
@@ -462,16 +455,19 @@ export default function BrenychGlyphPreloaderPreview({ onEnterComplete }: Props)
 
       {enterState === "complete" && !onEnterComplete ? <div className="absolute inset-0 z-30 bg-black" /> : null}
 
-      <div className="relative z-10 flex min-h-screen flex-col justify-between p-8 lg:p-10">
-        <div className="flex items-start justify-between gap-6">
-          <div className="rounded-full border border-[rgba(116,255,188,0.16)] bg-[rgba(4,14,8,0.44)] px-4 py-2 text-[11px] uppercase tracking-[0.32em] text-[rgba(190,255,220,0.68)] backdrop-blur-md">
+      <div className="pointer-events-none absolute left-3 top-3 z-30 sm:left-6 sm:top-5">
+        <div className="min-w-0 max-w-[min(58vw,380px)]">
+          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-white/34 sm:text-[11px]">
+            Brenych Studio / Glyph rain loader
+          </div>
+
+          <div className="inline-flex max-w-full items-center rounded-full border border-[#2d7c69]/45 bg-black/30 px-4 py-2 text-[10px] uppercase tracking-[0.34em] text-[#8ce7c6] shadow-[0_0_0_1px_rgba(8,51,40,0.20)] backdrop-blur-md sm:text-[11px]">
             PRELOADER / GLYPH RAIN
           </div>
-          <div className="text-right text-[11px] uppercase tracking-[0.32em] text-[rgba(162,255,206,0.44)]">
-            PHASE: {phaseLabel}
-          </div>
         </div>
+      </div>
 
+      <div className="relative z-10 flex min-h-screen flex-col justify-between p-8 lg:p-10">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div
             className="pointer-events-auto"
