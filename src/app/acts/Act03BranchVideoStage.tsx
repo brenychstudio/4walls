@@ -10,6 +10,7 @@ type Props = {
   onRestart: () => void;
   onBackToAct2: () => void;
   onContinue: () => void;
+  onEnterXR?: () => void;
 };
 
 export default function Act03BranchVideoStage({
@@ -18,6 +19,7 @@ export default function Act03BranchVideoStage({
   onRestart,
   onBackToAct2,
   onContinue,
+  onEnterXR,
 }: Props) {
   const [videoError, setVideoError] = useState(false);
   const copy = messages[locale];
@@ -127,6 +129,16 @@ export default function Act03BranchVideoStage({
             >
               {copy.ui.continueToAct04}
             </button>
+
+            {choice === "door" && onEnterXR ? (
+              <button
+                className="rounded-full border border-white/10 bg-black/18 px-5 py-3 text-sm text-white/66 backdrop-blur-md transition hover:border-white/22 hover:bg-black/32 hover:text-white/84"
+                onClick={onEnterXR}
+                type="button"
+              >
+                {copy.ui.xrOptionalDoor}
+              </button>
+            ) : null}
 
             <button
               className="rounded-full border border-white/12 bg-black/28 px-5 py-3 text-sm text-white/82 backdrop-blur-md transition hover:border-white/24 hover:bg-black/42"

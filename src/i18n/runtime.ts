@@ -35,9 +35,9 @@ export function subscribeLocaleChange(handler: (locale: Locale) => void) {
     handler(customEvent.detail);
   };
 
-  window.addEventListener(LOCALE_EVENT_NAME, listener);
+  window.addEventListener(LOCALE_EVENT_NAME, listener as EventListener);
 
   return () => {
-    window.removeEventListener(LOCALE_EVENT_NAME, listener);
+    window.removeEventListener(LOCALE_EVENT_NAME, listener as EventListener);
   };
 }

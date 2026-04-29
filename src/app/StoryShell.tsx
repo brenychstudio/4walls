@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+﻿import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import GlobalSoundtrack from "../components/audio/GlobalSoundtrack";
 import BrenychGlyphPreloaderPreview from "../components/preloader/BrenychGlyphPreloaderPreview";
 import ChapterIntroTypewriterPreview from "../components/story/ChapterIntroTypewriterPreview";
 import LanguageToggle from "../i18n/LanguageToggle";
-import { messages, type Locale } from "../i18n/messages";
+import { type Locale } from "../i18n/messages";
 import { getStoredLocale, subscribeLocaleChange } from "../i18n/runtime";
 import Act03BranchVideoStage from "./acts/Act03BranchVideoStage";
 import Act04ConsequenceStage from "./acts/Act04ConsequenceStage";
 import Act05HybridChoiceStage from "./acts/Act05HybridChoiceStage";
+import BranchVideoTransition from "./transitions/BranchVideoTransition";
 import { GLOBAL_SOUNDTRACK } from "./projectMedia";
 import { getAct2Scene, getBranchSceneTitle, getStageScene } from "./storyRegistry";
 import {
@@ -19,10 +20,6 @@ import {
   selectBranch,
 } from "./storyState";
 import type { ChoiceId, StoryControls, StoryRuntimeState } from "./storyTypes";
-import BranchVideoTransition from "./transitions/BranchVideoTransition";
-
-const XR_RETURN_STORAGE_KEY = "4walls.xr.return";
-const XR_RETURN_DOOR_ACT04 = "door_act04";
 
 const SHOW_DEV_HUD = true;
 
@@ -69,8 +66,6 @@ export default function StoryShell() {
   useEffect(() => {
     return subscribeLocaleChange(setLocale);
   }, []);
-
-  const copy = messages[locale];
 
   const handleAct1Complete = useCallback(() => {
     setRuntime((current) => moveToStage(current, "act2"));
@@ -158,35 +153,19 @@ export default function StoryShell() {
     }));
   }, []);
 
-  const continueDoorToAct04Direct = useCallback(() => {
+  const continueToAct4 = useCallback(() => {
     setBranchFlowStage("act4");
   }, []);
 
+  const continueDoorToAct04Direct = continueToAct4;
+
   const continueDoorViaXR = useCallback(() => {
-    sessionStorage.setItem(XR_RETURN_STORAGE_KEY, XR_RETURN_DOOR_ACT04);
-
-    const target = encodeURIComponent(`/?xr_return=${XR_RETURN_DOOR_ACT04}`);
-    window.location.assign(`/xr/door?return=${target}`);
+    const returnPath =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/";
+    window.location.assign(`/xr/door?return=${encodeURIComponent(returnPath)}`);
   }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const xrReturn = params.get("xr_return");
-    const storedReturn = sessionStorage.getItem(XR_RETURN_STORAGE_KEY);
-
-    const shouldResumeDoorAct04 =
-      xrReturn === XR_RETURN_DOOR_ACT04 ||
-      storedReturn === XR_RETURN_DOOR_ACT04;
-
-    if (!shouldResumeDoorAct04) return;
-
-    sessionStorage.removeItem(XR_RETURN_STORAGE_KEY);
-    window.history.replaceState({}, "", window.location.pathname);
-
-    requestAnimationFrame(() => {
-      continueDoorToAct04Direct();
-    });
-  }, [continueDoorToAct04Direct]);
 
   const chooseAct05Option = useCallback((id: string) => {
     setAct5ChoiceId(id);
@@ -220,7 +199,8 @@ export default function StoryShell() {
         locale={locale}
         onRestart={restartStoryFlow}
         onBackToAct2={moveBackToAct2}
-        onContinue={continueDoorViaXR}
+        onContinue={continueDoorToAct04Direct}
+        onEnterXR={runtime.selectedBranch === "door" ? continueDoorViaXR : undefined}
       />
     ) : runtime.stage === "act3" && branchFlowStage === "act4" ? (
       <Act04ConsequenceStage
@@ -271,7 +251,6 @@ export default function StoryShell() {
         <StoryHud
           runtime={runtime}
           controls={controls}
-          copy={copy}
           sceneId={stageScene.id}
           sceneTitle={selectedSceneTitle}
           xrHint={stageScene.xr.note}
@@ -296,7 +275,6 @@ export default function StoryShell() {
 type StoryHudProps = {
   runtime: StoryRuntimeState;
   controls: StoryControls;
-  copy: (typeof messages)[Locale];
   sceneId: string;
   sceneTitle: string;
   xrHint: string;
@@ -313,7 +291,6 @@ type StoryHudProps = {
 function StoryHud({
   runtime,
   controls,
-  copy,
   sceneId,
   sceneTitle,
   xrHint,
@@ -377,7 +354,7 @@ function StoryHud({
         <HudButton onClick={onJumpToAct1}>Act 01</HudButton>
         <HudButton onClick={onJumpToAct2}>Act 02</HudButton>
         <HudButton onClick={onJumpToAct3}>Act 03</HudButton>
-        <HudButton onClick={onRestart}>{copy.ui.restartStory}</HudButton>
+        <HudButton onClick={onRestart}>Restart</HudButton>
       </div>
     </aside>
   );

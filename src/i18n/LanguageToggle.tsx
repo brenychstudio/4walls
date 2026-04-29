@@ -11,8 +11,8 @@ export default function LanguageToggle() {
   }, []);
 
   const buttonStyle: CSSProperties = {
-    minHeight: 32,
-    minWidth: 52,
+    minHeight: 30,
+    minWidth: 46,
     padding: "0 12px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.10)",
